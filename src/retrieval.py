@@ -1,6 +1,6 @@
 import weaviate
 from weaviate.classes.query import MetadataQuery
-from utilities import mmr
+from utilities import MMR, diversity_ranker, dartboard
 
 
 client = weaviate.connect_to_custom(
@@ -52,14 +52,36 @@ for topic_id in topic_keys:
 
     counter += 1
 
-    if counter == 3:
+    if counter == 1:
         break
 
 
-selected_indices = mmr(top_vectors, query_similarities)
-print(selected_indices, '\n')
+selected_indices_mmr = MMR(top_vectors, query_similarities, 0.3)
+selected_indices_dr = diversity_ranker(top_vectors)
+selected_indices_db = dartboard(top_vectors, query_similarities)
 
-for id in selected_indices:
-    print(top_documents[id], '\n')
+print("No reranking \n")
+
+for id in range(5):
+    #print(top_documents[id], '\n')
+    print(query_similarities[id])
+
+print()
+
+print("Selected by MMR: ", selected_indices_mmr, '\n')
+
+for id in selected_indices_mmr:
+    #print(top_documents[id], '\n')
+    print(query_similarities[id])
+
+print("Selected by DiversityRanker: ", selected_indices_dr, '\n')
+for id in selected_indices_dr:
+    #print(top_documents[id], '\n')
+    print(query_similarities[id])
+
+print("Selected by Dartboard: ", selected_indices_db, '\n')
+for id in selected_indices_db:
+    #print(top_documents[id], '\n')
+    print(query_similarities[id])
 
 client.close()
