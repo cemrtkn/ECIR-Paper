@@ -1,13 +1,15 @@
-import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
-def mmr(documents, query, similarity_matrix, lambda_param=0.5, top_n=5):
-    # Calculate similarity between documents and the query
-    query_similarities = cosine_similarity([query], documents)[0]
+
+def mmr(vectors, query_similarities ,lambda_param=0.5, top_n=5):
+
+    X = np.array(vectors)
+
+    similarity_matrix = cosine_similarity(X)
     
-    # Initialize selected set and candidate set
     selected_indices = []
-    candidate_indices = list(range(len(documents)))
+    candidate_indices = list(range(len(vectors)))
 
     for _ in range(top_n):
         mmr_score = []
