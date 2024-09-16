@@ -1,11 +1,35 @@
-import weaviate
+import weaviate_custom
 from weaviate.classes.query import MetadataQuery
 from utilities import MMR, diversity_ranker, dartboard
 from visualization import visualize_rankings_with_tsne, visualize_rankings_with_pca
+import json
+
+def export_docs(reranked_docs_dict, base_output_filename):
+    mmr_file = f"./output/{base_output_filename}_mmr.jsonl"
+    dr_file = f"./output/{base_output_filename}_dr.jsonl"
+    db_file = f"./output/{base_output_filename}_db.jsonl"
+    
+    with open(mmr_file, 'w') as mmr_f, open(dr_file, 'w') as dr_f, open(db_file, 'w') as db_f:
+        for topic, rankings in reranked_docs_dict.items():
+            mmr_data = {
+                "topic": topic,
+                "documents": rankings["mmr"]
+            }
+            dr_data = {
+                "topic": topic,
+                "documents": rankings["dr"]
+            }
+            db_data = {
+                "topic": topic,
+                "documents": rankings["db"]
+            }
+            
+            mmr_f.write(json.dumps(mmr_data) + '\n')
+            dr_f.write(json.dumps(dr_data) + '\n')
+            db_f.write(json.dumps(db_data) + '\n')
 
 
-
-client = weaviate.connect_to_custom(
+client = weaviate_custom.connect_to_custom(
     http_host="weaviatedb.srv.webis.de",  
     http_port=80,                       
     http_secure=False,   
@@ -29,7 +53,7 @@ with open(topics_file_path, 'r') as file:
 
 topic_keys = list(topics.keys())
 
-
+reranked_docs_dict = {}
 counter = 0
 for topic_id in topic_keys:
     top_documents = []
@@ -51,18 +75,20 @@ for topic_id in topic_keys:
         top_documents.append(o.properties["segment"])
         top_vectors.append(vector)
         query_similarities.append(o.metadata.certainty)
+    
+    reranked_docs_dict[topic] = { 
+    "mmr": [top_documents[i] for i in MMR(top_vectors, query_similarities, 0.3)],
+    "dr": [top_documents[i] for i in diversity_ranker(top_vectors)],
+    "db": [top_documents[i] for i in dartboard(top_vectors, query_similarities)]
+}
 
     counter += 1
-
-    if counter == 1:
+    if counter == 2:
         break
 
+export_docs(reranked_docs_dict, "reranked_docs")
 
-selected_indices_mmr = MMR(top_vectors, query_similarities, 0.3)
-selected_indices_dr = diversity_ranker(top_vectors)
-selected_indices_db = dartboard(top_vectors, query_similarities)
-
-print("No reranking \n")
+'''print("No reranking \n")
 
 for id in range(5):
     #print(top_documents[id], '\n')
@@ -87,7 +113,7 @@ for id in selected_indices_db:
     print(query_similarities[id])
 
 
-visualize_rankings_with_tsne(topic, top_vectors, selected_indices_mmr, selected_indices_dr, selected_indices_db)
+visualize_rankings_with_tsne(topic, top_vectors, selected_indices_mmr, selected_indices_dr, selected_indices_db)'''
 
 
 client.close()
