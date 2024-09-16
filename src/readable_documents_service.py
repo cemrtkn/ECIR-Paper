@@ -36,8 +36,14 @@ with open(topics_file_path, 'r') as file:
 
 topic_values = list(topics.values())
 
-#document_objects = weaviate_db.retrieve(topic_values[0], 1)
-#print(document_objects[0])
+def rerank(top_documents, top_vectors, query_similarities, top_n = 5):
+    reranked_docs_dict = {
+        "original": top_documents[:top_n],
+        "mmr": [top_documents[i] for i in MMR(top_vectors, query_similarities, 0.3, top_n)],
+        "dr": [top_documents[i] for i in diversity_ranker(top_vectors, top_n)],
+        "db": [top_documents[i] for i in dartboard(top_vectors, query_similarities, top_n)]
+    }
+    return reranked_docs_dict
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -47,11 +53,25 @@ async def read_root(request: Request):
     if topic and topic in topic_values:
         query = topic
         try:
-            # Retrieve multiple documents (e.g., top 5)
-            top_documents, top_vectors, query_similarities = weaviate_db.retrieve(query, 5)  # Adjust the number of documents as needed
+            # Retrieve multiple documents
+            top_documents, top_vectors, query_similarities = weaviate_db.retrieve(query, 20)  # Get more documents for better reranking
+            reranked_docs_dict = rerank(top_documents, top_vectors, query_similarities, 5)  # Rerank top 5 documents
+            
             if top_documents:
-                # Loop through the documents and concatenate their content
-                document_content = "".join([f"<p>{doc}</p>" for doc in top_documents])
+                # Create the HTML structure to display the reranked documents side by side
+                table_rows = ""
+                for key, docs in reranked_docs_dict.items():
+                    # Create a column for each reranked strategy
+                    docs_html = "".join([f"<p>{doc}</p>" for doc in docs])
+                    table_rows += f"<td><h3>{key.upper()}</h3>{docs_html}</td>"
+                
+                document_content = f"""
+                <table style="width:100%; text-align:left;">
+                    <tr>
+                        {table_rows}
+                    </tr>
+                </table>
+                """
             else:
                 document_content = "No documents found."
         except Exception as e:
@@ -62,6 +82,21 @@ async def read_root(request: Request):
     <html>
         <head>
             <title>Topic Selector</title>
+            <style>
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                }}
+                td {{
+                    width: 25%; /* Make each column take up 25% of the table width */
+                    vertical-align: top; /* Align content at the top of each cell */
+                    padding: 10px; /* Add padding for better readability */
+                    border: 1px solid #ccc; /* Optional: Add borders for better visual separation */
+                }}
+                h3 {{
+                    text-align: center; /* Center the strategy titles */
+                }}
+            </style>
         </head>
         <body>
             <h1>Select a Topic</h1>
@@ -75,11 +110,16 @@ async def read_root(request: Request):
             <h2>Selected Topic</h2>
             <p>{query}</p>
             <h2>Documents</h2>
-            {document_content}
+            <table>
+                <tr>
+                    {table_rows}
+                </tr>
+            </table>
         </body>
     </html>
     """
     return HTMLResponse(content=html_content)
+
 
 
     
