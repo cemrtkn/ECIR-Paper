@@ -21,9 +21,26 @@ class weaviate_custom:
         self.client.close()
 
     def retrieve(self, query, top_n):
+        # get embeddings and put them into a list
+        def get_data(objects):
+            for o in objects:
+                o_with_vector = self.collection.query.fetch_object_by_id(o.uuid, include_vector= True)
+                vector = o_with_vector.vector['default']
+
+                top_documents.append(o.properties["segment"])
+                top_vectors.append(vector)
+                query_similarities.append(o.metadata.certainty)
+            return top_documents, top_vectors, query_similarities
+        
+        top_documents = []
+        top_vectors = []
+        query_similarities = []
+
         response = self.collection.query.near_text(
                     query=query,
                     limit=top_n,
                     return_metadata=MetadataQuery(distance=True, certainty=True)
                 )
-        return response.objects
+        
+        return get_data(response.objects)
+    

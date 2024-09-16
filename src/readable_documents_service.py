@@ -5,6 +5,8 @@ from typing import List
 import uvicorn
 from weaviate_custom import weaviate_custom
 import logging
+from utilities import MMR, diversity_ranker, dartboard
+
 
 
 # Configure logging
@@ -38,7 +40,6 @@ topic_values = list(topics.values())
 #print(document_objects[0])
 
 
-
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     topic = request.query_params.get("topic")
@@ -46,13 +47,15 @@ async def read_root(request: Request):
     if topic and topic in topic_values:
         query = topic
         try:
-            document = weaviate_db.retrieve(query, 1)
-            if document:
-                document_content = document[0].properties["segment"]  
+            # Retrieve multiple documents (e.g., top 5)
+            top_documents, top_vectors, query_similarities = weaviate_db.retrieve(query, 5)  # Adjust the number of documents as needed
+            if top_documents:
+                # Loop through the documents and concatenate their content
+                document_content = "".join([f"<p>{doc}</p>" for doc in top_documents])
             else:
-                document_content = "Document not found."
+                document_content = "No documents found."
         except Exception as e:
-            document_content = f"Error retrieving document: {str(e)}"
+            document_content = f"Error retrieving documents: {str(e)}"
     
     dropdown_options = "".join([f'<option value="{value}">{value}</option>' for value in topic_values])
     html_content = f"""
@@ -71,12 +74,13 @@ async def read_root(request: Request):
             </form>
             <h2>Selected Topic</h2>
             <p>{query}</p>
-            <h2>Document</h2>
-            <p>{document_content}</p>
+            <h2>Documents</h2>
+            {document_content}
         </body>
     </html>
     """
     return HTMLResponse(content=html_content)
+
 
     
 
