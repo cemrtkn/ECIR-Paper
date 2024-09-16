@@ -6,6 +6,7 @@ import uvicorn
 from weaviate_custom import weaviate_custom
 import logging
 from utilities import MMR, diversity_ranker, dartboard
+from llm import generation
 
 
 
@@ -49,13 +50,19 @@ def rerank(top_documents, top_vectors, query_similarities, top_n = 5):
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     topic = request.query_params.get("topic")
+    view_mode = request.query_params.get("view_mode", "show")  # Default to 'show'
     document_content = ""
+    query = ""
+    table_rows = ""
+    response_content = ""
+
     if topic and topic in topic_values:
         query = topic
         try:
             # Retrieve multiple documents
             top_documents, top_vectors, query_similarities = weaviate_db.retrieve(query, 20)  # Get more documents for better reranking
             reranked_docs_dict = rerank(top_documents, top_vectors, query_similarities, 5)  # Rerank top 5 documents
+            response = generation(query, reranked_docs_dict["mmr"])  # Call the generation function
             
             if top_documents:
                 # Create the HTML structure to display the reranked documents side by side
@@ -65,19 +72,38 @@ async def read_root(request: Request):
                     docs_html = "".join([f"<p>{doc}</p>" for doc in docs])
                     table_rows += f"<td><h3>{key.upper()}</h3>{docs_html}</td>"
                 
-                document_content = f"""
-                <table style="width:100%; text-align:left;">
-                    <tr>
-                        {table_rows}
-                    </tr>
-                </table>
-                """
+                # Switchable views
+                if view_mode == "show":
+                    # Document view
+                    document_content = f"""
+                    <table style="width:100%; text-align:left;">
+                        <tr>
+                            {table_rows}
+                        </tr>
+                    </table>
+                    """
+                elif view_mode == "responses":
+                    # Response view, show generated result
+                    response_content = f"<h2>Generated Response</h2><p>{response}</p>"
+                else:
+                    document_content = ""  # Hide documents
             else:
                 document_content = "No documents found."
         except Exception as e:
             document_content = f"Error retrieving documents: {str(e)}"
     
     dropdown_options = "".join([f'<option value="{value}">{value}</option>' for value in topic_values])
+    
+    # Switch button changes the view mode
+    switch_button = f"""
+    <form action="/" method="get">
+        <input type="hidden" name="topic" value="{topic}">
+        <input type="hidden" name="view_mode" value={"responses" if view_mode == "show" else "show"}>
+        <button type="submit">{'Show Responses' if view_mode == 'show' else 'Show Documents'}</button>
+    </form>
+    """
+    
+    # Main HTML content
     html_content = f"""
     <html>
         <head>
@@ -107,14 +133,13 @@ async def read_root(request: Request):
                 </select>
                 <input type="submit" value="Submit">
             </form>
+
+            {switch_button}
+
             <h2>Selected Topic</h2>
             <p>{query}</p>
-            <h2>Documents</h2>
-            <table>
-                <tr>
-                    {table_rows}
-                </tr>
-            </table>
+            {document_content}
+            {response_content}
         </body>
     </html>
     """
